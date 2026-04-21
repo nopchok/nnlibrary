@@ -1,5 +1,7 @@
 name = 'nnlibrary'
 
+import numpy as np
+
 class Indicators:
     @staticmethod
     def addAllTechnicalIndicators(df):
