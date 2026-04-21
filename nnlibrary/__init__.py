@@ -32,7 +32,7 @@ class Tools:
             return np.nan
 
     @staticmethod
-    def timeframe_resampler(df, timeframe='1D'):
+    def timeframe_resampler(self, df, timeframe='1D'):
         #Columns Check
         assert 'time' in df.columns, '\'time\' column is required.'
         assert 'open' in df.columns, '\'open\' column is required.'
@@ -127,59 +127,62 @@ class AsianPnL:
     Single Asian logic
     """
 
-    # ---------- Core Logic ----------
-    @staticmethod
-    def __asian_result__(value, line, odd):
-        base = value - line
-
-        win = odd - 1
-        win2 = win / 2
-
-        if base > 0.25:
-            return win
-        elif base == 0.25:
-            return win2
-        elif base == -0.25:
-            return -0.5
-        elif base < -0.25:
-            return -1
-        
-        return 0
-
-    # ---------- Row Level ----------
-    @staticmethod
-    def __calc_row_pnl__(row, signal='home'):
-        ghf, gaf = row['ghf'], row['gaf']
-        totalf = ghf + gaf
-
-        gh, ga = row['gh'], row['ga']
-
-        if signal == 'over':
-            v, l, o = totalf, row['goalline'], row['oddo']
-
-        elif signal == 'under':
-            v, l, o = -totalf, -row['goalline'], row['oddu']
-
-        elif signal == 'home':
-            v, l, o = (ghf - gh) - (gaf - ga), -row['handicap'], row['oddh']
-
-        else:  # away
-            v, l, o = (gaf - ga) - (ghf - gh), row['handicap'], row['odda']
-
-        return AsianPnL.__asian_result__(v, l, o)
-
-
-    # ---------- DataFrame API ----------
     @staticmethod
     def calc_pnl(df, signal='home'):
-        assert signal in ['home', 'away', 'over', 'under'], 'Signal must be home, away, over, under'
-        
-        required = ['ghf', 'gaf', 'gh', 'ga', 'handicap', 'oddh', 'odda', 'goalline', 'oddo', 'oddu']
-        # check column
-        assert all(col in df.columns for col in required), f"DF must contain columns {required}"
+        assert signal in ['home', 'away', 'over', 'under']
+
+        required = ['ghf', 'gaf', 'gh', 'ga', 'handicap',
+                    'oddh', 'odda', 'goalline', 'oddo', 'oddu']
+        assert all(col in df.columns for col in required)
 
         out = df.copy()
-        out['pnl'] = out.apply(lambda r: AsianPnL.__calc_row_pnl__(r, signal), axis=1)
+
+        ghf, gaf = out['ghf'], out['gaf']
+        gh, ga = out['gh'], out['ga']
+        totalf = ghf + gaf
+
+        if signal == 'over':
+            v = totalf
+            l = out['goalline']
+            o = out['oddo']
+
+        elif signal == 'under':
+            v = -totalf
+            l = -out['goalline']
+            o = out['oddu']
+
+        elif signal == 'home':
+            v = (ghf - gh) - (gaf - ga)
+            l = -out['handicap']
+            o = out['oddh']
+
+        else:  # away
+            v = (gaf - ga) - (ghf - gh)
+            l = out['handicap']
+            o = out['odda']
+
+        base = v - l
+
+        win = o - 1
+        win2 = win / 2
+
+        conditions = [
+            base > 0.25,
+            base == 0.25,
+            base == -0.25,
+            base < -0.25
+        ]
+
+        choices = [
+            win,
+            win2,
+            -0.5,
+            -1
+        ]
+
+        pnl = np.select(conditions, choices, default=0)
+
+        out['pnl'] = pnl
         out['cum_pnl'] = out['pnl'].cumsum()
+
         return out
-        
